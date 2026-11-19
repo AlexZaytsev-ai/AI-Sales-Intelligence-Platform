@@ -1,0 +1,693 @@
+{
+  "name": "AI Sales Intelligence / ИИ-аналитика продаж",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai-sales/transcript",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -368,
+        16
+      ],
+      "id": "2ac4cf3e-8c5a-4009-9e13-784b47589f87",
+      "name": "Webhook"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        656,
+        160
+      ],
+      "id": "5a96c855-c38c-453b-919e-51167f439ba8",
+      "name": "OpenAI Chat Model"
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "\n{\n  \"type\": \"object\",\n  \"properties\": {\n    \"customer_need\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"budget_min\": {\n      \"type\": [\"number\", \"null\"]\n    },\n    \"budget_max\": {\n      \"type\": [\"number\", \"null\"]\n    },\n    \"purchase_timeline\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"objections\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"next_action\": {\n      \"type\": [\"string\", \"null\"]\n    },\n    \"deal_status\": {\n      \"type\": \"string\",\n      \"enum\": [\"interested\", \"not_interested\", \"unknown\"]\n    }\n  },\n  \"required\": [\n    \"customer_need\",\n    \"budget_min\",\n    \"budget_max\",\n    \"purchase_timeline\",\n    \"objections\",\n    \"next_action\",\n    \"deal_status\"\n  ],\n  \"additionalProperties\": false\n}\n"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        800,
+        224
+      ],
+      "id": "73112dea-d3ae-49f4-9850-59b545a4b1c3",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    call_id,\n    score->>'need_discovery' AS need_discovery,\n    score->>'objection_handling' AS objection_handling,\n    score->>'product_knowledge' AS product_knowledge,\n    score->>'next_step' AS next_step,\n    score->>'communication' AS communication,\n    score->'recommendations' AS recommendations,\n    score_model,\n    scored_at\nFROM public.calls\nWHERE score IS NOT NULL\nORDER BY scored_at DESC\nLIMIT 10;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -368,
+        384
+      ],
+      "id": "4ea9bf45-b610-411e-bf05-df869a3727e3",
+      "name": "Execute a SQL query"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.transcript }}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "Ты AI-аналитик отдела продаж.\n\nПроанализируй телефонный разговор и извлеки:\n\n1. customer_need — потребность клиента\n2. budget_min — минимальный бюджет\n3. budget_max — максимальный бюджет\n4. purchase_timeline — срок покупки\n5. objections — возражения клиента\n6. next_action — следующее действие\n7. deal_status — interested, not_interested или unknown\n\nПравила: используй только факты из разговора. Не придумывай информацию. Если данных нет, возвращай null. Бюджет записывай числами. Верни только JSON без дополнительных объяснений."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        656,
+        0
+      ],
+      "id": "4204ab94-c35c-4120-bdd2-7315fe77017d",
+      "name": "Prepare Call Record / Подготовка записи звонка",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9fc00a50-708d-432a-864e-cd3f5e46a293",
+              "name": "call_id",
+              "value": "={{ $('Input Data (Входные данные)').first().json.call_id }}",
+              "type": "string"
+            },
+            {
+              "id": "e505958f-ea75-4f8a-a033-5effa6a9285e",
+              "name": "transcript",
+              "value": "={{ $('Input Data (Входные данные)').item.json.transcript }}",
+              "type": "string"
+            },
+            {
+              "id": "0640be18-87fe-4ff9-bc87-83ea33086b92",
+              "name": "analysis",
+              "value": "={{ $json.output }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1088,
+        -16
+      ],
+      "id": "aa9a3416-a5bb-4adb-93e5-0ad814ca72c6",
+      "name": "Prepare Call Record (Подготовка записи звонка)"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.calls AS c\n    (call_id, transcript, analysis, status)\nVALUES ($1, $2, $3::jsonb, 'analyzed')\nON CONFLICT (call_id)\nDO UPDATE SET\n    transcript = EXCLUDED.transcript,\n    analysis = EXCLUDED.analysis,\n    status = EXCLUDED.status,\n    score = CASE\n        WHEN c.transcript IS DISTINCT FROM EXCLUDED.transcript\n        THEN NULL ELSE c.score\n    END,\n    score_model = CASE\n        WHEN c.transcript IS DISTINCT FROM EXCLUDED.transcript\n        THEN NULL ELSE c.score_model\n    END,\n    scored_at = CASE\n        WHEN c.transcript IS DISTINCT FROM EXCLUDED.transcript\n        THEN NULL ELSE c.scored_at\n    END\nRETURNING id, call_id, status;",
+        "options": {
+          "queryReplacement": "= {{ [$json.call_id, $json.transcript, JSON.stringify($json.analysis)] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1280,
+        -16
+      ],
+      "id": "a8b3a892-465e-4d60-9b14-995e61821ac9",
+      "name": "Save Call (Сохранение звонка)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f497b089-6cb9-4811-9364-c8529d52dc17",
+              "name": "call_id",
+              "value": "={{ $json.body.call_id }}",
+              "type": "string"
+            },
+            {
+              "id": "4c3f600b-0d48-4891-8476-ef15cc14fd08",
+              "name": "transcript",
+              "value": "={{ $json.body.transcript }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -176,
+        16
+      ],
+      "id": "41fb5df7-fa14-4b26-901a-2cf1c2375d88",
+      "name": "Input Data (Входные данные)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ad128386-d3f7-4784-9e81-7ac8be69ed51",
+              "leftValue": "={{ $json.transcript?.trim() || '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        16,
+        16
+      ],
+      "id": "3ed7d6c8-be2f-4f64-b31b-69b5614383e4",
+      "name": "Validate Transcript (Проверка расшифровки)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e13dc021-04a6-4a76-b77f-88cad71d8f18",
+              "name": "call_id",
+              "value": "={{ $json.call_id }}",
+              "type": "string"
+            },
+            {
+              "id": "7eed92fe-31d8-4488-8e67-7f795c406154",
+              "name": "error",
+              "value": "Transcript is empty",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        208,
+        112
+      ],
+      "id": "341a735c-41a2-40bd-b5ef-57b6a75dc11b",
+      "name": "Invalid Transcript (Пустая расшифровка)"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO calls (call_id, transcript, status)\nVALUES ($1, '', 'error')\nON CONFLICT (call_id)\nDO UPDATE SET\n    status = 'error'\nRETURNING id, call_id, status;",
+        "options": {
+          "queryReplacement": "={{ [$json.call_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        400,
+        112
+      ],
+      "id": "e8ce247f-ae07-4d59-86a8-e175bbb86fb8",
+      "name": "Запись пустой расшифровки"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "40615a96-c51c-4da6-9639-64eaec4f84f4",
+              "name": "call_id",
+              "value": "={{ $json.call_id }}",
+              "type": "string"
+            },
+            {
+              "id": "3876875a-87f1-492f-ae18-0573866a4bf0",
+              "name": "error",
+              "value": "={{ $json.error }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1088,
+        320
+      ],
+      "id": "c154dd80-f4a7-4078-8bd8-c15525143bd7",
+      "name": "Prepare AI Error (Подготовка ошибки ИИ)"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO calls (call_id, transcript, status)\nVALUES ($1, $2, 'error')\nON CONFLICT (call_id)\nDO UPDATE SET status = 'error'\nRETURNING id, call_id, status;",
+        "options": {
+          "queryReplacement": "={{ [$json.call_id, $json.transcript] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1280,
+        320
+      ],
+      "id": "a74fa43a-f4a7-4284-8b24-626327ad54c2",
+      "name": "Save AI Error (Сохранение ошибки ИИ)"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Input Data (Входные данные)').first().json.transcript }}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "Ты AI-аудитор качества продаж.\n\nОцени работу менеджера по расшифровке звонка.\n\nКритерии (от 0 до 2 баллов):\n1. need_discovery — выявление потребности.\n0 — менеджер не выяснял потребность.\n1 — выяснил часть параметров, например бюджет и сроки, но существенные требования к товару остались неизвестны.\n2 — выяснил существенные требования к товару, бюджет и сроки.\nnull — недостаточно данных для оценки.\n2. objection_handling — работа с возражениями.\n0 — проигнорировал высказанное возражение или ответил не по существу.\n1 — ответил частично: сообщил отдельные условия или предложил подбор, но не разобрал сомнение клиента.\n2 — уточнил существенные детали возражения и дал адресный ответ на них. При сравнении предложений объяснил различия в товаре, составе работ или общей стоимости.\nnull — возражений не было или недостаточно данных для оценки.\n3. product_knowledge — полнота объяснения товара и условий.\n0 — менеджер не сообщил никаких характеристик, цен или условий покупки и установки.\n1 — сообщил часть сведений, но объяснение осталось неполным или неоднозначным.\n2 — объяснил подходящие клиенту характеристики и существенные условия покупки и установки.\nnull — недостаточно данных или неясно, какие реплики принадлежат менеджеру.\n\nНе приписывай менеджеру уточняющие вопросы, которых нет в расшифровке.\n\nЕсли менеджер сообщил хотя бы одно конкретное условие, нельзя ставить 0 с обоснованием «ничего не объяснил». В обосновании укажи, что сообщил и чего не хватило.\n4. next_step — договорённость о следующем действии.\n5. communication — ясность и вежливость общения.\n\nШкала:\n0 — не выполнено.\n1 — выполнено частично.\n2 — выполнено хорошо.\nnull — недостаточно данных для оценки.\n\nПравила:\n- Оценивай только действия менеджера.\n- Используй только факты из разговора.\n- Не выдумывай информацию.\n- Не оценивай интонацию по тексту.\n- Если роли собеседников неясны, используй null.\n- Для каждой оценки приведи короткое обоснование.\n- Верни только JSON.\n\nДополнительные правила:\n- В каждом обосновании приводи короткую точную цитату из расшифровки.\n- Перед выводом «не уточнил» или «не объяснил» проверяй весь разговор.\n- Работа с возражениями — это уточнение сомнения клиента и содержательный ответ, а не обязательная критика конкурента.\n- product_knowledge оценивает полноту и ясность объяснения. Без базы знаний компании не утверждай, что сведения о товаре или ценах верны.\n- Неоднозначные фрагменты расшифровки отмечай в обосновании. Не восстанавливай искажённые цены догадками.\n\nВ поле recommendations верни до трёх конкретных действий для улучшения этого разговора.\n\nКаждая рекомендация должна соответствовать выявленному недостатку и содержать пример вопроса или реплики менеджера.\n\nНе советуй повторять уже выполненные действия. Не придумывай характеристики товара, цены, скидки и гарантии. Если обоснованных рекомендаций нет, верни [].\n"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1520,
+        -16
+      ],
+      "id": "434fff65-1e23-4b8d-afa8-04288b9e43bd",
+      "name": "Score Call (Оценка звонка)"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-6.1-terra",
+          "mode": "list",
+          "cachedResultName": "gpt-6.1-terra"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1520,
+        208
+      ],
+      "id": "862c887a-4998-459f-b1fa-1c118e6940d5",
+      "name": "OpenAI Chat Model1"
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"need_discovery\": {\"type\": [\"integer\", \"null\"], \"minimum\": 0, \"maximum\": 2},\n    \"need_discovery_reason\": {\"type\": [\"string\", \"null\"]},\n    \"objection_handling\": {\"type\": [\"integer\", \"null\"], \"minimum\": 0, \"maximum\": 2},\n    \"objection_handling_reason\": {\"type\": [\"string\", \"null\"]},\n    \"product_knowledge\": {\"type\": [\"integer\", \"null\"], \"minimum\": 0, \"maximum\": 2},\n    \"product_knowledge_reason\": {\"type\": [\"string\", \"null\"]},\n    \"next_step\": {\"type\": [\"integer\", \"null\"], \"minimum\": 0, \"maximum\": 2},\n    \"next_step_reason\": {\"type\": [\"string\", \"null\"]},\n    \"communication\": {\"type\": [\"integer\", \"null\"], \"minimum\": 0, \"maximum\": 2},\n    \"communication_reason\": {\"type\": [\"string\", \"null\"]},\n    \"recommendations\": {\n      \"type\": \"array\",\n      \"items\": {\"type\": \"string\", \"minLength\": 1},\n      \"maxItems\": 3,\n      \"description\": \"Конкретные действия для улучшения работы менеджера по фактам разговора. Если рекомендаций нет, верни пустой массив.\"\n    }\n  },\n  \"required\": [\n    \"need_discovery\", \"need_discovery_reason\",\n    \"objection_handling\", \"objection_handling_reason\",\n    \"product_knowledge\", \"product_knowledge_reason\",\n    \"next_step\", \"next_step_reason\",\n    \"communication\", \"communication_reason\",\n    \"recommendations\"\n  ],\n  \"additionalProperties\": false\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1664,
+        144
+      ],
+      "id": "b7579d9b-bed9-45ed-bdd8-e34669ce09f2",
+      "name": "Structured Output Parser1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.calls\nSET\n    score = $2::jsonb,\n    score_model = $3,\n    scored_at = NOW()\nWHERE call_id = $1\n  AND transcript = $4\nRETURNING call_id, score, score_model, scored_at;",
+        "options": {
+          "queryReplacement": "={{ [\n  $('Save Call (Сохранение звонка)').first().json.call_id,\n  JSON.stringify($json.output),\n  'gpt-6.1-terra',\n  $('Input Data (Входные данные)').first().json.transcript\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1920,
+        -160
+      ],
+      "id": "caac3116-21b5-448b-9269-572778e2073b",
+      "name": "Save Score (Сохранение оценки)"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Звонки"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID звонка": "={{ $json.call_id }}",
+            "Дата оценки": "={{ DateTime.fromISO($json.scored_at).setZone('Europe/Moscow').toFormat('dd.MM.yyyy HH:mm') }}",
+            "Выявление потребности": "={{ $json.score.need_discovery ?? 'Не оценено' }}",
+            "Работа с возражениями": "={{ $json.score.objection_handling ?? 'Не оценено' }}",
+            "Объяснение товара": "={{ $json.score.product_knowledge ?? 'Не оценено' }}",
+            "Следующий шаг": "={{ $json.score.next_step ?? 'Не оценено' }}",
+            "Общение": "={{ $json.score.communication ?? 'Не оценено' }}",
+            "Рекомендации": "={{ ($json.score.recommendations ?? []).join('\\n') }}",
+            "Модель": "={{ $json.score_model }}"
+          },
+          "matchingColumns": [
+            "ID звонка"
+          ],
+          "schema": [
+            {
+              "id": "ID звонка",
+              "displayName": "ID звонка",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Дата оценки",
+              "displayName": "Дата оценки",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Выявление потребности",
+              "displayName": "Выявление потребности",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Работа с возражениями",
+              "displayName": "Работа с возражениями",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Объяснение товара",
+              "displayName": "Объяснение товара",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Следующий шаг",
+              "displayName": "Следующий шаг",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Общение",
+              "displayName": "Общение",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Рекомендации",
+              "displayName": "Рекомендации",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Модель",
+              "displayName": "Модель",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2128,
+        -160
+      ],
+      "id": "a384e781-6125-449b-97db-1cc4b66d2200",
+      "name": "Добавить или обновить строку"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Input Data (Входные данные)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Prepare Call Record / Подготовка записи звонка",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Prepare Call Record / Подготовка записи звонка",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Call Record / Подготовка записи звонка": {
+      "main": [
+        [
+          {
+            "node": "Prepare Call Record (Подготовка записи звонка)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare AI Error (Подготовка ошибки ИИ)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Call Record (Подготовка записи звонка)": {
+      "main": [
+        [
+          {
+            "node": "Save Call (Сохранение звонка)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Input Data (Входные данные)": {
+      "main": [
+        [
+          {
+            "node": "Validate Transcript (Проверка расшифровки)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Transcript (Проверка расшифровки)": {
+      "main": [
+        [
+          {
+            "node": "Prepare Call Record / Подготовка записи звонка",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Invalid Transcript (Пустая расшифровка)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invalid Transcript (Пустая расшифровка)": {
+      "main": [
+        [
+          {
+            "node": "Запись пустой расшифровки",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare AI Error (Подготовка ошибки ИИ)": {
+      "main": [
+        [
+          {
+            "node": "Save AI Error (Сохранение ошибки ИИ)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Score Call (Оценка звонка)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser1": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Score Call (Оценка звонка)",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Call (Сохранение звонка)": {
+      "main": [
+        [
+          {
+            "node": "Score Call (Оценка звонка)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Call (Оценка звонка)": {
+      "main": [
+        [
+          {
+            "node": "Save Score (Сохранение оценки)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Score (Сохранение оценки)": {
+      "main": [
+        [
+          {
+            "node": "Добавить или обновить строку",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": []
+}

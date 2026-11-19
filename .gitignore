@@ -1,0 +1,40 @@
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Audio and local transcripts (synthetic examples use JSON)
+/incoming/
+/sent/
+*.txt
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.ogg
+*.opus
+*.aac
+*.wma
+*.aif
+*.aiff
+*.pcm
+
+# Keep only the Python source from the local Whisper distribution
+/Release/*
+!/Release/transcribe.py
+*.exe
+*.dll
+*.bin
+*.so
+*.dylib
+*.zip
+*.7z
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Logs
+*.log
