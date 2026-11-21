@@ -4,6 +4,14 @@
 
 A sales call processing demo: local WAV transcription, structured sales analysis, manager scoring, PostgreSQL storage, and a Google Sheets report. Built with Python, whisper.cpp Small, and n8n.
 
+## Demo
+
+https://github.com/user-attachments/assets/0c4a3ef4-efe1-4f43-b6c0-968d9a342d16
+
+64-second overview of completed call processing: the n8n workflow, extracted customer needs, and manager scoring. The interface and captions are in Russian.
+
+The n8n results use `call_id=demo-002`. The Google Sheets segment is an example report from a separate test run, `demo-001`, explicitly labeled in the video.
+
 ## Business Problem
 
 Call recordings require manual review to recover customer needs, budgets, objections, and agreed actions. Reviewing the manager's work is a separate task. This project stores the transcript, extracted facts, and an explained assessment under one unique `call_id`, with a compact report for review.
@@ -65,7 +73,7 @@ The main path saves analysis, scores the call, saves the score, and updates Shee
 
 ![Google Sheets call scoring report](docs/images/google-sheets-report.jpg)
 
-The register contains a call ID, scoring date, five scores, recommendations, and the model identifier. The screenshots are included as supplied; no video is available.
+The register contains a call ID, scoring date, five scores, recommendations, and the model identifier. The screenshots are included as supplied.
 
 ## Example
 
